@@ -8,11 +8,17 @@
 
 import SpriteKit
 import GameplayKit
+import ARKit
 
 class GameScene: SKScene {
     
-    let player = Media.Player(fileName: "backgroundMusic.mp3")
+    let player = Media.Player(fileName: "backgroundMusic1.mp3")
+
+    let cameraNode = SKCameraNode()
     let zombie = SKSpriteNode(imageNamed: "zombie1")
+    let livesLabelNode = SKLabelNode(fontNamed: UIFont.boldSystemFont(ofSize: 50).fontName)
+    let trainsLabelNode = SKLabelNode(fontNamed: UIFont.boldSystemFont(ofSize: 50).fontName)
+
     var dt: TimeInterval = 0
     var lastTimeInterval: TimeInterval = 0
     let zomebieDidMovePerSec: CGFloat = 480
@@ -20,15 +26,14 @@ class GameScene: SKScene {
     let zombieAnimation: SKAction
     var zombieIsProtect = false
     
-    let countLabel = SKLabelNode()
-    
-    
     var lives = 3
     var trainCount = 0
     var gameOver: Bool = false
     
     
     let catDidMovePerSec: CGFloat =  480
+    let camraMovePointPerSec: CGFloat = 200.0
+    
     
     var velocity = CGPoint.zero
     let playRect: CGRect
@@ -36,6 +41,38 @@ class GameScene: SKScene {
     
     let playHitCatSound = SKAction.playSoundFileNamed("hitCat.wav", waitForCompletion: false)
     let playHitCatLadySound = SKAction.playSoundFileNamed("hitCatLady.wav", waitForCompletion: false)
+    
+    
+    var overlapAmount: CGFloat {
+        if #available(iOS 11.0, *) {
+            return 0
+        } else {
+            guard let view = self.view else {
+                return 0
+            }
+            let scale = view.bounds.size.width / self.size.width
+            let scaledHeight = self.size.height * scale
+            let scaledOverlap = scaledHeight - view.bounds.size.height
+            return scaledOverlap / scale
+        }
+        
+
+    }
+    var cameraPosition: CGPoint {
+        get {
+            return CGPoint(x: cameraNode.position.x, y: cameraNode.position.y + overlapAmount)
+        }
+        set(position) {
+            cameraNode.position = CGPoint(x: position.x, y: position.y - overlapAmount)
+        }
+    }
+    var cameraRect: CGRect {
+        return CGRect(x: cameraPosition.x - (size.width / 2) + (size.width - playRect.width) / 2 ,
+                       y: cameraPosition.y - (size.height / 2) + (size.height - playRect.height) / 2,
+                       width: playRect.width,
+                       height: playRect.height)
+    }
+    
     
     override init(size: CGSize) {
         let maxAspectRatio: CGFloat = 16 / 9.0
@@ -46,6 +83,7 @@ class GameScene: SKScene {
         let textures = [1, 2, 3, 4, 3, 2].map({ SKTexture(imageNamed: "zombie\($0)")})
         zombieAnimation = SKAction.animate(with: textures, timePerFrame: 0.1)
         super.init(size: size)
+        scaleMode = .aspectFill
     }
     
     required init?(coder aDecoder: NSCoder) {
@@ -55,10 +93,33 @@ class GameScene: SKScene {
     // MARK: override
     override func didMove(to view: SKView) {
         super.didMove(to: view)
-        let back = SKSpriteNode(imageNamed: "background1")
-        back.position = CGPoint(x: size.width/2, y: size.height/2)
-        back.zPosition = -1
-        addChild(back)
+        
+        let backgroundNodeBuilder: () -> SKSpriteNode = {
+            let main = SKSpriteNode()
+            main.anchorPoint = CGPoint.zero
+            main.name = "background"
+            
+            let bg1 = SKSpriteNode(imageNamed: "background1")
+            bg1.anchorPoint = CGPoint.zero
+            bg1.position = CGPoint.zero
+            main.addChild(bg1)
+            
+            let bg2 = SKSpriteNode(imageNamed: "background2")
+            bg2.anchorPoint = CGPoint.zero
+            bg2.position = CGPoint(x: bg1.size.width, y: 0)
+            main.addChild(bg2)
+            
+            main.size = CGSize(width: bg1.size.width + bg2.size.width, height: bg1.size.height)
+            main.zPosition = -1
+            
+            return main
+        }
+        
+        for i in 0...1 {
+            let bg = backgroundNodeBuilder()
+            bg.position = CGPoint(x: CGFloat(i) * bg.size.width, y: 0)
+            addChild(bg)
+        }
         
         zombie.position = CGPoint(x: 400, y: 400)
         zombie.zPosition = 1000
@@ -68,12 +129,29 @@ class GameScene: SKScene {
         player?.play()
         
         
-        countLabel.color = UIColor.white
-        countLabel.fontSize = 50
-        countLabel.fontName = UIFont.boldSystemFont(ofSize: 50).fontName
-        countLabel.text = "Lives: \(lives)  Train:\(trainCount)"
-        countLabel.position = CGPoint(x: countLabel.frame.width / 2 + 10, y: playRect.maxY - countLabel.frame.height - 10)
-        addChild(countLabel)
+        
+        addChild(cameraNode)
+        camera = cameraNode
+        cameraPosition = size.center
+        
+        
+        livesLabelNode.color = SKColor.black
+        livesLabelNode.fontSize = 100
+        livesLabelNode.zPosition = 50
+        livesLabelNode.verticalAlignmentMode = .bottom
+        livesLabelNode.horizontalAlignmentMode = .left
+        livesLabelNode.position = CGPoint(x: -playRect.width/2 + 20, y: -playRect.height/2  + 20 + overlapAmount/2)
+        cameraNode.addChild(livesLabelNode)
+        
+        
+        trainsLabelNode.color = SKColor.black
+        trainsLabelNode.fontSize = 100
+        trainsLabelNode.zPosition = 50
+        trainsLabelNode.verticalAlignmentMode = .bottom
+        trainsLabelNode.horizontalAlignmentMode = .right
+        trainsLabelNode.position = CGPoint(x: playRect.width/2 - 20, y: -playRect.height/2 + 20 + overlapAmount/2)
+        cameraNode.addChild(trainsLabelNode)
+
     }
     
     
@@ -81,17 +159,18 @@ class GameScene: SKScene {
         super.update(currentTime)
         dt = lastTimeInterval > 0 ? (currentTime - lastTimeInterval) : 0
         lastTimeInterval = currentTime
-        if let last = lastTouchLocation {
-            if (zombie.position -  last).length < CGFloat(dt) * zomebieDidMovePerSec {
-                velocity = CGPoint.zero
-                stopZombieAnimation()
-            }
-        }
+//        if let last = lastTouchLocation {
+//            if (zombie.position -  last).length < CGFloat(dt) * zomebieDidMovePerSec {
+//                velocity = CGPoint.zero
+//                stopZombieAnimation()
+//            }
+//        }
         if velocity != CGPoint.zero {
             startZombieAnimation()
         }
         move(sprite: zombie, velocity: velocity)
         moveTrain()
+        moveCamera()
         rotate(sprite: zombie, direction: velocity, rotateRadiansPerSec: zomebieRotateRadiusPerSec)
         boundsCheckZombie()
         
@@ -112,9 +191,8 @@ class GameScene: SKScene {
                 player?.stop()
             }
         }
-        
-        countLabel.text = "Lives: \(lives)  Train:\(trainCount)"
-        
+        livesLabelNode.text = "lives: \(lives)"
+        trainsLabelNode.text = "cats: \(trainCount)"
     }
     
     override func didEvaluateActions() {
@@ -127,9 +205,10 @@ class GameScene: SKScene {
     private func spawnEnemy() {
         let enemyNode = SKSpriteNode(imageNamed: "enemy")
         enemyNode.name = "enemy"
-        enemyNode.position = CGPoint(x: size.width + enemyNode.size.width / 2,
-                                     y: CGFloat.random(min: playRect.minY + enemyNode.size.height / 2,
-                                                       max: playRect.maxY - enemyNode.size.height / 2))
+        enemyNode.zPosition = 50
+        enemyNode.position = CGPoint(x: cameraRect.maxX + enemyNode.size.width / 2,
+                                     y: CGFloat.random(min: cameraRect.minY + enemyNode.size.height / 2,
+                                                       max: cameraRect.maxY - enemyNode.size.height / 2))
         addChild(enemyNode)
         let moveAction = SKAction.moveTo(x: -enemyNode.size.width/2, duration: 2)
         let removeAction = SKAction.removeFromParent()
@@ -139,8 +218,9 @@ class GameScene: SKScene {
     private func spawnCat() {
         let cat = SKSpriteNode(imageNamed: "cat")
         cat.name = "cat"
-        cat.position = CGPoint(x: CGFloat.random(min: playRect.minX, max: playRect.maxX),
-                               y: CGFloat.random(min: playRect.minY, max: playRect.maxY))
+        cat.zPosition = 50
+        cat.position = CGPoint(x: CGFloat.random(min: cameraRect.minX, max: cameraRect.maxX),
+                               y: CGFloat.random(min: cameraRect.minY, max: cameraRect.maxY))
         cat.zRotation = -CGFloat.pi / 16
         cat.setScale(0)
         addChild(cat)
@@ -186,7 +266,7 @@ class GameScene: SKScene {
     
     
     private func boundsCheckZombie() {
-        let bounds = UIEdgeInsets(top: playRect.minY, left: 0, bottom: playRect.maxY, right: size.width)
+        let bounds = UIEdgeInsets(top: cameraRect.minY, left: cameraRect.minX, bottom: cameraRect.maxY, right: cameraRect.maxX)
         if zombie.position.x <= bounds.left {
             zombie.position.x = bounds.left
             velocity.x *= -1
@@ -231,6 +311,18 @@ class GameScene: SKScene {
                 node.run(moveAction)
             }
             targetPosiztion = node.position
+        }
+    }
+    
+    
+    private func moveCamera() {
+        let bgV = CGPoint(x: camraMovePointPerSec, y: 0)
+        let amountToMove = bgV * CGFloat(dt)
+        cameraNode.position = cameraNode.position + amountToMove
+        enumerateChildNodes(withName: "background") { (node, _) in
+            guard let bg = node as? SKSpriteNode,
+                bg.position.x + bg.size.width < self.cameraRect.minX else { return }
+            bg.position.x = bg.position.x  + bg.size.width * 2
         }
     }
 

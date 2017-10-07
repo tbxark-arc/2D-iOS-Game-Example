@@ -57,6 +57,13 @@ extension CGFloat {
     }
 }
 
+
+extension CGSize {
+    var center: CGPoint {
+        return CGPoint(x: width / 2, y: height / 2)
+    }
+}
+
 func shortestAngleBetween(_ A: CGFloat, _ B: CGFloat) -> CGFloat {
     let c = (B - A).truncatingRemainder(dividingBy: (CGFloat.pi * 2))
     if c >= CGFloat.pi {
