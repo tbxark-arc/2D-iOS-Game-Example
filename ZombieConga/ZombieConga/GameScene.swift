@@ -12,7 +12,7 @@ import ARKit
 
 class GameScene: SKScene {
     
-    let player = Media.Player(fileName: "backgroundMusic1.mp3")
+    let player = Media.Player(fileName: "backgroundMusic.mp3")
 
     let cameraNode = SKCameraNode()
     let zombie = SKSpriteNode(imageNamed: "zombie1")
